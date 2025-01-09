@@ -97,7 +97,7 @@ export class TranscribeService {
     const audio = { content: audioBytes };
 
     const config = {
-      encoding: protos.google.cloud.speech.v1.AudioEncoding.FLAC, // Correct usage
+      encoding: protos.google.cloud.speech.v1.enums.AudioEncoding.FLAC, // Correct usage
       sampleRateHertz: 16000,
       languageCode: 'en-US',
     };
