@@ -48,17 +48,17 @@ export class TranscribeService {
     const tmpMediaFile = tmp.fileSync({ postfix: '.mp4' });
     fs.writeFileSync(tmpMediaFile.name, mediaBuffer); // Save the downloaded content to the temp file
 
-    console.log(`Processing media from processMediaUrl : ${url}`);
+    console.log(`Processing media from URL : ${url}`);
 
     const mimeType = await this.detectMediaType(tmpMediaFile.name);
-    console.log(`mimeType : ${mimeType}`);
-    // Pass the file path correctly to the extractAudioFromVideo function
+    console.log(`Detected mimeType : ${mimeType}`);
+
     if (mimeType === 'video') {
       const audioFilePath = await this.extractAudioFromVideo(tmpMediaFile);
-      console.log(`audioFilePath : ${audioFilePath}`);
+      console.log(`Audio file saved to: ${audioFilePath}`);
       return this.transcribeAudio(audioFilePath); // Process extracted audio
     } else if (mimeType === 'audio') {
-      console.log(`audioFilePath : ${tmpMediaFile.name}`);
+      console.log(`Audio file path: ${tmpMediaFile.name}`);
       return this.transcribeAudio(tmpMediaFile.name); // Process audio directly
     } else {
       console.log(`Unsupported media type`);
@@ -91,7 +91,6 @@ export class TranscribeService {
     file: Express.Multer.File | tmp.FileResult,
   ) {
     return new Promise<string>((resolve, reject) => {
-      // Use tmp.tmpNameSync() to generate the temporary output file name
       const audioFilePath = tmp.tmpNameSync({
         postfix: '.flac',
         dir: tmp.dirSync().name, // Using system temp directory for audio output
