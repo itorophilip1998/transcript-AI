@@ -17,10 +17,12 @@ export class TranscribeService {
   // Main function to process media files (either URL or uploaded file)
   async processMedia(input: string | Express.Multer.File) {
     if (typeof input === 'string') {
+      console.log('Processing media from URL:', input);
       // URL input
       return this.processMediaUrl(input);
     } else {
       // File input
+      console.log('Processing media from file:', input);
       return this.processFile(input);
     }
   }
@@ -39,18 +41,27 @@ export class TranscribeService {
   }
 
   // Process media files from a URL
-  private async processMediaUrl(url: string) {
+  async processMediaUrl(url: string) {
     const mediaBuffer = await this.downloadMedia(url);
+
+    // Create a temporary file for the downloaded media
     const tmpMediaFile = tmp.fileSync({ postfix: '.mp4' });
-    fs.writeFileSync(tmpMediaFile.name, mediaBuffer);
+    fs.writeFileSync(tmpMediaFile.name, mediaBuffer); // Save the downloaded content to the temp file
+
+    console.log(`Processing media from processMediaUrl : ${url}`);
 
     const mimeType = await this.detectMediaType(tmpMediaFile.name);
+    console.log(`mimeType : ${mimeType}`);
+    // Pass the file path correctly to the extractAudioFromVideo function
     if (mimeType === 'video') {
       const audioFilePath = await this.extractAudioFromVideo(tmpMediaFile);
-      return this.transcribeAudio(audioFilePath);
+      console.log(`audioFilePath : ${audioFilePath}`);
+      return this.transcribeAudio(audioFilePath); // Process extracted audio
     } else if (mimeType === 'audio') {
-      return this.transcribeAudio(tmpMediaFile.name);
+      console.log(`audioFilePath : ${tmpMediaFile.name}`);
+      return this.transcribeAudio(tmpMediaFile.name); // Process audio directly
     } else {
+      console.log(`Unsupported media type`);
       throw new Error('Unsupported media type');
     }
   }
@@ -75,23 +86,29 @@ export class TranscribeService {
     }
   }
 
-  // Extract audio from a video file using ffmpeg
+  // Extract audio from video file
   private async extractAudioFromVideo(
     file: Express.Multer.File | tmp.FileResult,
   ) {
     return new Promise<string>((resolve, reject) => {
-      const audioFilePath = tmp.tmpNameSync({ postfix: '.flac' });
+      // Use tmp.tmpNameSync() to generate the temporary output file name
+      const audioFilePath = tmp.tmpNameSync({
+        postfix: '.flac',
+        dir: tmp.dirSync().name, // Using system temp directory for audio output
+      });
 
-      console.log(`Extracting audio from video file: ${file.path}`);
+      console.log(
+        `Extracting audio from video file: ${file.name || file.path}`,
+      );
       console.log(`Saving extracted audio to: ${audioFilePath}`);
 
-      fluentFfmpeg(file.path)
+      fluentFfmpeg(file.name || file.path) // Use file.name or file.path
         .audioCodec('flac')
         .toFormat('flac')
         .save(audioFilePath)
         .on('end', () => {
           console.log(`Audio extraction completed: ${audioFilePath}`);
-          resolve(audioFilePath);
+          resolve(audioFilePath); // Return the path to the extracted audio
         })
         .on('error', (err) => {
           console.error(`Error during audio extraction: ${err.message}`);
