@@ -1,34 +1,37 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { TranscribeService } from './transcribe.service';
-import { CreateTranscribeDto } from './dto/create-transcribe.dto';
-import { UpdateTranscribeDto } from './dto/update-transcribe.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
 
-@Controller('transcribe')
+@Controller('video')
 export class TranscribeController {
   constructor(private readonly transcribeService: TranscribeService) {}
 
-  @Post()
-  create(@Body() createTranscribeDto: CreateTranscribeDto) {
-    return this.transcribeService.create(createTranscribeDto);
-  }
-
-  @Get()
-  findAll() {
-    return this.transcribeService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.transcribeService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateTranscribeDto: UpdateTranscribeDto) {
-    return this.transcribeService.update(+id, updateTranscribeDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.transcribeService.remove(+id);
+  @Post('transcribe')
+  @UseInterceptors(FileInterceptor('file')) // Handle file upload
+  async transcribe(@UploadedFile() file: File, @Body() body: any) {
+    if (file) {
+      // Check MIME type to see if it's audio or video
+      const mimeType = file.mimetype.split('/')[0];
+      if (mimeType === 'video') {
+        return this.transcribeService.processVideoFile(file); // Process video
+      } else if (mimeType === 'audio') {
+        return this.transcribeService.processAudioFile(file); // Process audio directly
+      } else {
+        throw new Error(
+          'Unsupported file type. Please upload a video or audio file.',
+        );
+      }
+    } else if (body.url) {
+      // If URL is provided, process the video/audio URL
+      return this.transcribeService.processMediaUrl(body.url);
+    } else {
+      throw new Error('No video file or URL provided.');
+    }
   }
 }
