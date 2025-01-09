@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as fluentFfmpeg from 'fluent-ffmpeg';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SpeechClient, protos } from '@google-cloud/speech'; // Import protos here
+import { SpeechClient, protos } from '@google-cloud/speech';
 import * as axios from 'axios';
 import * as tmp from 'tmp';
 
@@ -11,29 +11,39 @@ export class TranscribeService {
   private readonly speechClient: SpeechClient;
 
   constructor() {
-    // Initialize the Google Cloud Speech client
     this.speechClient = new SpeechClient();
   }
 
-  // Process video file upload: Extract audio from video and transcribe it
-  async processVideoFile(file: Express.Multer.File) {
-    const audioFilePath = await this.extractAudioFromVideo(file);
-    return this.transcribeAudio(audioFilePath);
+  // Main function to process media files (either URL or uploaded file)
+  async processMedia(input: string | Express.Multer.File) {
+    if (typeof input === 'string') {
+      // URL input
+      return this.processMediaUrl(input);
+    } else {
+      // File input
+      return this.processFile(input);
+    }
   }
 
-  // Process audio file upload and transcribe it directly
-  async processAudioFile(file: Express.Multer.File) {
-    const audioFilePath = file.path;
-    return this.transcribeAudio(audioFilePath);
+  // Process video files and extract audio
+  private async processFile(file: Express.Multer.File) {
+    const mimeType = await this.detectMediaType(file.path);
+    if (mimeType === 'video') {
+      const audioFilePath = await this.extractAudioFromVideo(file);
+      return this.transcribeAudio(audioFilePath);
+    } else if (mimeType === 'audio') {
+      return this.transcribeAudio(file.path);
+    } else {
+      throw new Error('Unsupported media type');
+    }
   }
 
-  // Process video or audio URL (Download and transcribe)
-  async processMediaUrl(url: string) {
+  // Process media files from a URL
+  private async processMediaUrl(url: string) {
     const mediaBuffer = await this.downloadMedia(url);
     const tmpMediaFile = tmp.fileSync({ postfix: '.mp4' });
     fs.writeFileSync(tmpMediaFile.name, mediaBuffer);
 
-    // Check if the media is a video or audio based on the file extension
     const mimeType = await this.detectMediaType(tmpMediaFile.name);
     if (mimeType === 'video') {
       const audioFilePath = await this.extractAudioFromVideo(tmpMediaFile);
@@ -45,7 +55,7 @@ export class TranscribeService {
     }
   }
 
-  // Function to download media (audio/video) from a URL
+  // Download media file from a URL
   private async downloadMedia(url: string): Promise<Buffer> {
     const response = await axios.default.get(url, {
       responseType: 'arraybuffer',
@@ -53,60 +63,56 @@ export class TranscribeService {
     return Buffer.from(response.data);
   }
 
-  // Detect whether the file is audio or video based on its extension
+  // Detect whether the file is audio or video based on extension
   private async detectMediaType(filePath: string): Promise<'audio' | 'video'> {
     const fileExtension = path.extname(filePath).toLowerCase();
-    if (
-      fileExtension === '.mp3' ||
-      fileExtension === '.wav' ||
-      fileExtension === '.flac'
-    ) {
+    if (['.mp3', '.wav', '.flac'].includes(fileExtension)) {
       return 'audio';
-    } else if (
-      fileExtension === '.mp4' ||
-      fileExtension === '.mov' ||
-      fileExtension === '.avi'
-    ) {
+    } else if (['.mp4', '.mov', '.avi'].includes(fileExtension)) {
       return 'video';
     } else {
       throw new Error('Unsupported file type');
     }
   }
 
-  // Extract audio from video using ffmpeg
+  // Extract audio from a video file using ffmpeg
   private async extractAudioFromVideo(
     file: Express.Multer.File | tmp.FileResult,
   ) {
     return new Promise<string>((resolve, reject) => {
       const audioFilePath = tmp.tmpNameSync({ postfix: '.flac' });
 
+      console.log(`Extracting audio from video file: ${file.path}`);
+      console.log(`Saving extracted audio to: ${audioFilePath}`);
+
       fluentFfmpeg(file.path)
         .audioCodec('flac')
         .toFormat('flac')
         .save(audioFilePath)
-        .on('end', () => resolve(audioFilePath))
-        .on('error', (err) => reject(err));
+        .on('end', () => {
+          console.log(`Audio extraction completed: ${audioFilePath}`);
+          resolve(audioFilePath);
+        })
+        .on('error', (err) => {
+          console.error(`Error during audio extraction: ${err.message}`);
+          reject(err);
+        });
     });
   }
 
   // Transcribe audio using Google Cloud Speech-to-Text API
   private async transcribeAudio(audioFilePath: string) {
-    const file = fs.readFileSync(audioFilePath);
-    const audioBytes = file.toString('base64');
+    const audioBytes = await this.readFileAsBase64(audioFilePath);
 
     const audio = { content: audioBytes };
-
     const config = {
       encoding:
-        protos.google.cloud.speech.v1.RecognitionConfig.AudioEncoding.FLAC, // Correct usage
-      sampleRateHertz: 16000,
+        protos.google.cloud.speech.v1.RecognitionConfig.AudioEncoding.FLAC,
+      sampleRateHertz: await this.getSampleRate(audioFilePath),
       languageCode: 'en-US',
     };
 
-    const request = {
-      audio: audio,
-      config: config,
-    };
+    const request = { audio: audio, config: config };
 
     try {
       const [operation] = await this.speechClient.longRunningRecognize(request);
@@ -116,13 +122,42 @@ export class TranscribeService {
         .map((result) => result.alternatives[0].transcript)
         .join('\n');
 
-      // Clean up the temporary audio file
-      fs.unlinkSync(audioFilePath);
+      // Clean up temporary audio file after transcription
+      if (fs.existsSync(audioFilePath)) {
+        fs.unlinkSync(audioFilePath);
+        console.log(`Temporary file deleted: ${audioFilePath}`);
+      }
 
       return { transcript };
     } catch (err) {
       console.error('Error during transcription: ', err);
       throw new Error('Error during transcription');
     }
+  }
+
+  // Helper function to read file as base64
+  private async readFileAsBase64(filePath: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const buffer = [];
+      const stream = fs.createReadStream(filePath);
+
+      stream.on('data', (chunk) => buffer.push(chunk));
+      stream.on('end', () => resolve(Buffer.concat(buffer).toString('base64')));
+      stream.on('error', reject);
+    });
+  }
+
+  // Helper function to get the sample rate of an audio file
+  private async getSampleRate(filePath: string): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
+      fluentFfmpeg(filePath).ffprobe((err, metadata) => {
+        if (err) {
+          reject(err);
+        } else {
+          const sampleRate = metadata.streams[0]?.sample_rate || 16000; // Default to 16000 if not found
+          resolve(sampleRate);
+        }
+      });
+    });
   }
 }

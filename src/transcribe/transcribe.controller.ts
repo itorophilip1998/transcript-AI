@@ -4,6 +4,7 @@ import {
   Body,
   UploadedFile,
   UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
 import { TranscribeService } from './transcribe.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -19,23 +20,20 @@ export class TranscribeController {
     @UploadedFile() file: Express.Multer.File, // Correctly typing the file object
     @Body() body: any,
   ) {
-    if (file) {
-      // Check MIME type to see if it's audio or video
-      const mimeType = file.mimetype.split('/')[0];
-      if (mimeType === 'video') {
-        return this.transcribeService.processVideoFile(file); // Process video
-      } else if (mimeType === 'audio') {
-        return this.transcribeService.processAudioFile(file); // Process audio directly
+    try {
+      if (file) {
+        // Pass the file directly to the service for processing
+        return this.transcribeService.processMedia(file);
+      } else if (body.url) {
+        // If URL is provided, process the video/audio URL
+        return this.transcribeService.processMedia(body.url);
       } else {
-        throw new Error(
-          'Unsupported file type. Please upload a video or audio file.',
-        );
+        // Throw an exception if neither file nor URL is provided
+        throw new BadRequestException('No video file or URL provided.');
       }
-    } else if (body.url) {
-      // If URL is provided, process the video/audio URL
-      return this.transcribeService.processMediaUrl(body.url);
-    } else {
-      throw new Error('No video file or URL provided.');
+    } catch (error) {
+      console.error('Error during transcription process:', error);
+      throw new BadRequestException(error.message || 'Transcription failed.');
     }
   }
 }
