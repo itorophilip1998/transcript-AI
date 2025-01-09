@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as fluentFfmpeg from 'fluent-ffmpeg';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SpeechClient } from '@google-cloud/speech';
+import { SpeechClient, protos } from '@google-cloud/speech'; // Correct import
 import * as axios from 'axios';
 import * as tmp from 'tmp';
 
@@ -97,7 +97,7 @@ export class TranscribeService {
     const audio = { content: audioBytes };
 
     const config = {
-      encoding: 'FLAC',
+      encoding: protos.google.cloud.speech.v1.AudioEncoding.FLAC, // Correct usage
       sampleRateHertz: 16000,
       languageCode: 'en-US',
     };

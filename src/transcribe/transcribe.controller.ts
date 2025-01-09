@@ -7,14 +7,18 @@ import {
 } from '@nestjs/common';
 import { TranscribeService } from './transcribe.service';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Express } from 'express'; // Importing Express for correct typing
 
-@Controller('video')
+@Controller('transcribe')
 export class TranscribeController {
   constructor(private readonly transcribeService: TranscribeService) {}
 
-  @Post('transcribe')
+  @Post('')
   @UseInterceptors(FileInterceptor('file')) // Handle file upload
-  async transcribe(@UploadedFile() file: File, @Body() body: any) {
+  async transcribe(
+    @UploadedFile() file: Express.Multer.File, // Correctly typing the file object
+    @Body() body: any,
+  ) {
     if (file) {
       // Check MIME type to see if it's audio or video
       const mimeType = file.mimetype.split('/')[0];
