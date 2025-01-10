@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
-import { YouTubeTranscribeModule } from './you-tube-transcribe/you-tube-transcribe.module';
-
+import { YoutubeModule } from './youtube/youtube.module';
 @Module({
-  imports: [YouTubeTranscribeModule],
+  imports: [YoutubeModule],
 })
 export class AppModule {}
